@@ -1,5 +1,5 @@
 import copy
-from typing import Dict
+from typing import Dict, Type
 
 from django.contrib.auth.models import Group, User
 from rest_framework import fields, serializers, viewsets
@@ -7,6 +7,31 @@ from rest_framework.decorators import action, api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from testapp.models import Blog, Comment, Post, PostPhoto
+
+
+# def make_response_wrapper(request_serializer: Type[serializers.Serializer],
+#                           response_serializer: Type[serializers.Serializer]):
+
+#     class ResponseWrapperSerializer(serializers.Serializer):
+#         success = fields.BooleanField(read_only=True)
+#         result: serializers.Serializer
+#         errors: serializers.Serializer
+
+
+def process_request(request_serializer: Type[serializers.Serializer],
+                    response_serializer: Type[serializers.Serializer],
+                    data: Dict):
+    """
+    Реализует базовый флоу 
+        для вьюшек создания/редактирования объекта requst_serializer должен наследоваться от ModelSerializer
+        для остальных - у входного сериализатора должен быть переопределен метод create()
+    """
+    input_model = request_serializer(data=data)
+    if input_model.is_valid():
+        instance = input_model.save()
+        output = response_serializer(instance)
+        return Response(output.data)
+    return Response(input_model.errors)
 
 
 class CreateBlogRequestSerializer(serializers.ModelSerializer):
@@ -22,8 +47,9 @@ class CreateBlogRequestSerializer(serializers.ModelSerializer):
     def validate_title(self, value: str):  # кастомная сериализация ОДНОГО поля
         print('validate_title', value)
         if value != value.upper():
-            raise serializers.ValidationError(
-                'ЗАГОЛОВОК ДОЛЖЕН ПРИВЛЕКАТЬ ВНИМАНИЕ!')
+            raise serializers.ValidationError({
+                'attracted_title': 'ЗАГОЛОВОК ДОЛЖЕН ПРИВЛЕКАТЬ ВНИМАНИЕ!'
+            })
         return value
 
     def get_blog_title(self):
@@ -46,34 +72,17 @@ class CreateBlogRequestSerializer(serializers.ModelSerializer):
 class CreateBlogResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = Blog
-        fields = ['id']
+        fields = ['id', 'some_shit']
     id = fields.ReadOnlyField()
     some_shit = serializers.SerializerMethodField('get_some_shit')
 
     def get_some_shit(self, obj):
         return f'some shit {obj.pk}'
 
-# @RequstSerializer(CreateBlogRequestSerializer)
-# @SerializerResponse()
-# @api_view(['POST'])
-# def create_blog(request) -> Response:
-    # input: CreateBlogInputSerializer
-    # input_model = CreateBlogRequestSerializer(data=request.data)
-    # if input_model.is_valid():
-    #     instance = input_model.save()
-    #     output = CreateBlogResponseSerializer(instance)
-    #     return Response(output.data)
-    # return Response(input_model.errors)
-
 
 @api_view(['POST'])
-def create_blog(request):
-    input_model = CreatePostRequestSerializer(data=request.data)
-    if input_model.is_valid():
-        instance = input_model.save()
-        output = CreatePostRequestSerializer(instance)
-        return Response(output.data)
-    return Response(input_model.errors)
+def create_blog(request) -> Response:
+    return process_request(CreateBlogRequestSerializer, CreateBlogResponseSerializer, request.data)
 
 ############################################################################################################################################################################################################
 ############################################################################################################################################################################################################
@@ -98,12 +107,7 @@ class PostPhotoResponseSerializer(serializers.ModelSerializer):
 
 @api_view(['POST'])
 def upload_post_photo(request) -> Response:
-    input_model = PostPhotoRequestSerializer(data=request.data)
-    if input_model.is_valid():
-        instance = input_model.save()
-        output = PostPhotoResponseSerializer(instance)
-        return Response(output.data)
-    return Response(input_model.errors)
+    return process_request(PostPhotoRequestSerializer, PostPhotoResponseSerializer, request.data)
 
 
 ############################################################################################################################################################################################################
@@ -142,9 +146,4 @@ class CreatePostRequestSerializer(serializers.ModelSerializer):
 
 @api_view(['POST'])
 def create_post(request) -> Response:
-    input_model = CreatePostRequestSerializer(data=request.data)
-    if input_model.is_valid():
-        instance = input_model.save()
-        output = CreatePostRequestSerializer(instance)
-        return Response(output.data)
-    return Response(input_model.errors)
+    return process_request(CreatePostRequestSerializer, CreatePostRequestSerializer, request.data)
